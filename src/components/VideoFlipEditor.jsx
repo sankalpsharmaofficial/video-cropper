@@ -1,201 +1,132 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Volume2, VolumeX, Play, Pause } from 'lucide-react';
 
-const VideoFlipEditor = ({ videoSource }) => {
-	// State management
+const VideoFlipEditor = ({
+	videoSource = 'https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'
+}) => {
+	// Basic video states
 	const [playing, setPlaying] = useState(false);
+	const [currentTime, setCurrentTime] = useState(0);
+	const [duration, setDuration] = useState(0);
 	const [volume, setVolume] = useState(1);
 	const [muted, setMuted] = useState(false);
 	const [playbackRate, setPlaybackRate] = useState(1);
-	const [currentTime, setCurrentTime] = useState(0);
-	const [duration, setDuration] = useState(0);
+
+	// Cropper states
 	const [aspectRatio, setAspectRatio] = useState('9:16');
+	const [cropperActive, setCropperActive] = useState(false);
 	const [cropperPosition, setCropperPosition] = useState({ x: 0, y: 0 });
 	const [cropperSize, setCropperSize] = useState({ width: 0, height: 0 });
 	const [isDragging, setIsDragging] = useState(false);
-	const [recordings, setRecordings] = useState([]);
-	const [cropperActive, setCropperActive] = useState(false);
+
+	// Loading states
 	const [videoError, setVideoError] = useState(false);
 	const [videoLoading, setVideoLoading] = useState(true);
 
 	// Refs
 	const videoRef = useRef(null);
 	const previewRef = useRef(null);
-	const cropperRef = useRef(null);
 	const containerRef = useRef(null);
+	const cropperRef = useRef(null);
 
+	// Initialize cropper dimensions when aspect ratio changes
 	useEffect(() => {
-		if (!videoSource) {
-			setVideoError(true);
-			return;
-		}
+		if (containerRef.current) {
+			const container = containerRef.current;
+			const [width, height] = aspectRatio.split(':').map(Number);
+			const ratio = width / height;
 
-		setVideoError(false);
-		setVideoLoading(true);
-	}, [videoSource]);
+			const containerHeight = container.clientHeight;
+			const cropperHeight = containerHeight;
+			const cropperWidth = cropperHeight * ratio;
 
-	// Format time function
-	const formatTime = (timeInSeconds) => {
-		const minutes = Math.floor(timeInSeconds / 60);
-		const seconds = Math.floor(timeInSeconds % 60);
-		return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-	};
-
-	useEffect(() => {
-		if (videoRef.current) {
-			const video = videoRef.current;
-			video.addEventListener('loadedmetadata', () => {
-				setDuration(video.duration);
-				initializeCropper();
+			setCropperSize({ width: cropperWidth, height: cropperHeight });
+			setCropperPosition({
+				x: (container.clientWidth - cropperWidth) / 2,
+				y: 0
 			});
-
-			return () => {
-				video.removeEventListener('loadedmetadata', () => {});
-			};
 		}
+	}, [aspectRatio]);
+
+	// Video event handlers
+	useEffect(() => {
+		const video = videoRef.current;
+		if (!video) return;
+
+		const handleLoadedMetadata = () => {
+			setDuration(video.duration);
+			setVideoLoading(false);
+		};
+
+		const handleTimeUpdate = () => {
+			setCurrentTime(video.currentTime);
+			if (previewRef.current) {
+				previewRef.current.currentTime = video.currentTime;
+			}
+		};
+
+		video.addEventListener('loadedmetadata', handleLoadedMetadata);
+		video.addEventListener('timeupdate', handleTimeUpdate);
+
+		return () => {
+			video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+			video.removeEventListener('timeupdate', handleTimeUpdate);
+		};
 	}, []);
 
-	const handleVideoLoad = () => {
-		setVideoLoading(false);
-	};
-
-	const handleVideoError = () => {
-		setVideoError(true);
-		setVideoLoading(false);
-	};
-
-	const initializeCropper = () => {
-		const video = videoRef.current;
-		const container = containerRef.current;
-		if (!video || !container) return;
-
-		const videoAspect = video.videoWidth / video.videoHeight;
-		const containerWidth = container.clientWidth;
-		const containerHeight = container.clientHeight;
-
-		// Initialize cropper size based on selected aspect ratio
-		const [width, height] = aspectRatio.split(':').map(Number);
-		const ratio = width / height;
-		const cropperHeight = containerHeight;
-		const cropperWidth = cropperHeight * ratio;
-
-		setCropperSize({
-			width: cropperWidth,
-			height: cropperHeight
-		});
-
-		// Center the cropper
-		setCropperPosition({
-			x: (containerWidth - cropperWidth) / 2,
-			y: 0
-		});
-	};
-
+	// Playback controls
 	const handlePlayPause = () => {
-		if (videoRef.current) {
-			if (playing) {
-				videoRef.current.pause();
-				if (previewRef.current) {
-					previewRef.current.pause();
-				}
-			} else {
-				videoRef.current.play();
-				if (previewRef.current) {
-					previewRef.current.play();
-				}
-			}
-			setPlaying(!playing);
-		}
-	};
+		if (!videoRef.current) return;
 
-	const handleTimeUpdate = () => {
-		if (videoRef.current) {
-			setCurrentTime(videoRef.current.currentTime);
-			// Sync preview video
-			if (previewRef.current) {
-				previewRef.current.currentTime = videoRef.current.currentTime;
-			}
-			recordCurrentState();
+		if (playing) {
+			videoRef.current.pause();
+			previewRef.current?.pause();
+		} else {
+			videoRef.current.play();
+			previewRef.current?.play();
 		}
-	};
-
-	const handleVolumeChange = (e) => {
-		const value = parseFloat(e.target.value);
-		setVolume(value);
-		if (videoRef.current) {
-			videoRef.current.volume = value;
-			if (previewRef.current) {
-				previewRef.current.volume = value;
-			}
-		}
-	};
-
-	const toggleMute = () => {
-		if (videoRef.current) {
-			videoRef.current.muted = !muted;
-			if (previewRef.current) {
-				previewRef.current.muted = !muted;
-			}
-			setMuted(!muted);
-		}
-	};
-
-	const handlePlaybackRateChange = (rate) => {
-		setPlaybackRate(rate);
-		if (videoRef.current) {
-			videoRef.current.playbackRate = rate;
-			if (previewRef.current) {
-				previewRef.current.playbackRate = rate;
-			}
-		}
+		setPlaying(!playing);
 	};
 
 	const handleSeek = (e) => {
 		const time = parseFloat(e.target.value);
-		setCurrentTime(time);
 		if (videoRef.current) {
 			videoRef.current.currentTime = time;
 			if (previewRef.current) {
 				previewRef.current.currentTime = time;
 			}
+			setCurrentTime(time);
 		}
 	};
 
-	const handleAspectRatioChange = (ratio) => {
-		setAspectRatio(ratio);
-		initializeCropper();
-	};
-
+	// Mouse handlers for cropper
 	const handleMouseDown = (e) => {
 		if (!cropperActive) return;
 		setIsDragging(true);
 		const cropperRect = cropperRef.current.getBoundingClientRect();
-		const offsetX = e.clientX - cropperRect.left;
-		const offsetY = e.clientY - cropperRect.top;
-		cropperRef.current.dataset.offsetX = offsetX;
-		cropperRef.current.dataset.offsetY = offsetY;
+		cropperRef.current.dataset.startX = e.clientX - cropperRect.left;
+		cropperRef.current.dataset.startY = e.clientY - cropperRect.top;
 	};
 
 	const handleMouseMove = (e) => {
-		if (!isDragging || !cropperActive) return;
+		if (
+			!isDragging ||
+			!cropperActive ||
+			!cropperRef.current ||
+			!containerRef.current
+		)
+			return;
 
-		const container = containerRef.current;
-		const cropper = cropperRef.current;
-		if (!container || !cropper) return;
+		const container = containerRef.current.getBoundingClientRect();
+		const startX = parseFloat(cropperRef.current.dataset.startX);
+		const startY = parseFloat(cropperRef.current.dataset.startY);
 
-		const containerRect = container.getBoundingClientRect();
-		const offsetX = parseFloat(cropper.dataset.offsetX);
-		const offsetY = parseFloat(cropper.dataset.offsetY);
+		let newX = e.clientX - container.left - startX;
+		let newY = e.clientY - container.top - startY;
 
-		let newX = e.clientX - containerRect.left - offsetX;
-		let newY = e.clientY - containerRect.top - offsetY;
-
-		// Constrain movement within container
-		newX = Math.max(0, Math.min(newX, containerRect.width - cropperSize.width));
-		newY = Math.max(
-			0,
-			Math.min(newY, containerRect.height - cropperSize.height)
-		);
+		// Constrain to container bounds
+		newX = Math.max(0, Math.min(newX, container.width - cropperSize.width));
+		newY = Math.max(0, Math.min(newY, container.height - cropperSize.height));
 
 		setCropperPosition({ x: newX, y: newY });
 	};
@@ -204,63 +135,16 @@ const VideoFlipEditor = ({ videoSource }) => {
 		setIsDragging(false);
 	};
 
-	const recordCurrentState = () => {
-		if (!cropperActive) return;
-
-		const newRecording = {
-			timeStamp: currentTime,
-			coordinates: [
-				cropperPosition.x,
-				cropperPosition.y,
-				cropperPosition.x + cropperSize.width,
-				cropperPosition.y + cropperSize.height
-			],
-			volume: volume,
-			playbackRate: playbackRate
-		};
-
-		setRecordings((prev) => {
-			// Only add if timestamp is different from last recording
-			const lastRecording = prev[prev.length - 1];
-			if (
-				!lastRecording ||
-				lastRecording.timeStamp !== newRecording.timeStamp
-			) {
-				return [...prev, newRecording];
-			}
-			return prev;
-		});
+	// Format time for display
+	const formatTime = (time) => {
+		const minutes = Math.floor(time / 60);
+		const seconds = Math.floor(time % 60);
+		return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 	};
-
-	const downloadJSON = () => {
-		const dataStr = JSON.stringify(recordings, null, 2);
-		const dataBlob = new Blob([dataStr], { type: 'application/json' });
-		const url = URL.createObjectURL(dataBlob);
-		const link = document.createElement('a');
-		link.href = url;
-		link.download = 'video-editor-recording.json';
-		document.body.appendChild(link);
-		link.click();
-		document.body.removeChild(link);
-		URL.revokeObjectURL(url);
-	};
-
-	if (videoError) {
-		return (
-			<div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center">
-				<div className="bg-gray-800 rounded-lg p-6 text-center">
-					<p className="text-red-500">
-						Error loading video. Please check the video source.
-					</p>
-				</div>
-			</div>
-		);
-	}
 
 	return (
 		<div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center">
 			<div className="bg-gray-800 rounded-lg w-full max-w-6xl p-6">
-				{/* Header */}
 				<div className="flex justify-between items-center mb-6">
 					<h2 className="text-white text-xl">Cropper</h2>
 					<div className="flex gap-4">
@@ -274,34 +158,26 @@ const VideoFlipEditor = ({ videoSource }) => {
 				</div>
 
 				<div className="flex gap-6">
-					{/* Main video container */}
+					{/* Main video */}
 					<div className="w-2/3">
 						<div
 							ref={containerRef}
 							className="relative bg-black rounded-lg overflow-hidden"
 							style={{ aspectRatio: '16/9' }}
+							onMouseMove={handleMouseMove}
+							onMouseUp={handleMouseUp}
+							onMouseLeave={handleMouseUp}
 						>
-							{videoLoading && (
-								<div className="absolute inset-0 flex items-center justify-center">
-									<div className="text-white">Loading video...</div>
-								</div>
-							)}
 							<video
 								ref={videoRef}
 								className="w-full h-full object-contain"
-								onTimeUpdate={handleTimeUpdate}
-								onLoadedData={handleVideoLoad}
-								onError={handleVideoError}
-							>
-								<source src={videoSource} type="video/mp4" />
-								<source src={videoSource} type="video/webm" />
-								Your browser does not support the video tag.
-							</video>
+								src={videoSource}
+							/>
 
 							{cropperActive && (
 								<div
 									ref={cropperRef}
-									className="absolute border border-white"
+									className="absolute border border-white cursor-move"
 									style={{
 										left: `${cropperPosition.x}px`,
 										top: `${cropperPosition.y}px`,
@@ -310,7 +186,6 @@ const VideoFlipEditor = ({ videoSource }) => {
 									}}
 									onMouseDown={handleMouseDown}
 								>
-									{/* Grid overlay */}
 									<div className="absolute inset-0 grid grid-cols-3 grid-rows-3">
 										{[...Array(9)].map((_, i) => (
 											<div
@@ -330,7 +205,6 @@ const VideoFlipEditor = ({ videoSource }) => {
 									{playing ? <Pause size={20} /> : <Play size={20} />}
 								</button>
 
-								{/* Progress bar */}
 								<div className="flex-1">
 									<input
 										type="range"
@@ -342,14 +216,15 @@ const VideoFlipEditor = ({ videoSource }) => {
 									/>
 								</div>
 
-								{/* Time display */}
 								<div className="text-white text-sm">
 									{formatTime(currentTime)} / {formatTime(duration)}
 								</div>
 
-								{/* Volume control */}
 								<div className="flex items-center gap-2">
-									<button onClick={toggleMute} className="text-white">
+									<button
+										onClick={() => setMuted(!muted)}
+										className="text-white"
+									>
 										{muted ? <VolumeX size={20} /> : <Volume2 size={20} />}
 									</button>
 									<input
@@ -358,35 +233,31 @@ const VideoFlipEditor = ({ videoSource }) => {
 										max="1"
 										step="0.1"
 										value={volume}
-										onChange={handleVolumeChange}
+										onChange={(e) => setVolume(parseFloat(e.target.value))}
 										className="w-24"
 									/>
 								</div>
 							</div>
 
-							{/* Bottom controls */}
+							{/* Settings controls */}
 							<div className="flex gap-4">
-								{/* Playback speed dropdown */}
 								<select
 									value={playbackRate}
-									onChange={(e) =>
-										handlePlaybackRateChange(parseFloat(e.target.value))
-									}
+									onChange={(e) => setPlaybackRate(parseFloat(e.target.value))}
 									className="bg-gray-700 text-white rounded px-3 py-1"
 								>
-									<option value={1}>Playback speed 1x</option>
 									<option value={0.5}>0.5x</option>
+									<option value={1}>1x</option>
 									<option value={1.5}>1.5x</option>
 									<option value={2}>2x</option>
 								</select>
 
-								{/* Aspect ratio dropdown */}
 								<select
 									value={aspectRatio}
-									onChange={(e) => handleAspectRatioChange(e.target.value)}
+									onChange={(e) => setAspectRatio(e.target.value)}
 									className="bg-gray-700 text-white rounded px-3 py-1"
 								>
-									<option value="9:16">Cropper Aspect Ratio 9:16</option>
+									<option value="9:16">9:16</option>
 									<option value="9:18">9:18</option>
 									<option value="4:3">4:3</option>
 									<option value="3:4">3:4</option>
@@ -397,26 +268,32 @@ const VideoFlipEditor = ({ videoSource }) => {
 						</div>
 					</div>
 
-					{/* Preview section */}
+					{/* Preview */}
 					<div className="w-1/3">
-						<div className="bg-gray-900 rounded-lg p-4 h-full flex flex-col items-center justify-center">
+						<div className="bg-gray-900 rounded-lg p-4 h-full flex flex-col">
 							<h3 className="text-gray-400 mb-4">Preview</h3>
 							{cropperActive ? (
-								<video
-									ref={previewRef}
-									className="w-full object-cover rounded"
-									style={{ aspectRatio }}
-									onError={handleVideoError}
+								<div
+									className="relative w-full bg-black rounded overflow-hidden"
+									style={{ height: '400px' }}
 								>
-									<source src={videoSource} type="video/mp4" />
-									<source src={videoSource} type="video/webm" />
-									Your browser does not support the video tag.
-								</video>
+									<video
+										ref={previewRef}
+										className="absolute w-full h-full"
+										src={videoSource}
+										style={{
+											objectFit: 'cover',
+											transform: `scale(${containerRef.current?.clientWidth / cropperSize.width || 1})
+                                 translate(${-cropperPosition.x}px, ${-cropperPosition.y}px)`,
+											transformOrigin: 'top left'
+										}}
+									/>
+								</div>
 							) : (
-								<div className="text-center">
+								<div className="flex-1 flex flex-col items-center justify-center">
 									<div className="mb-4">
 										<svg
-											className="w-12 h-12 mx-auto text-gray-500"
+											className="w-12 h-12 text-gray-500"
 											fill="none"
 											viewBox="0 0 24 24"
 											stroke="currentColor"
@@ -462,10 +339,7 @@ const VideoFlipEditor = ({ videoSource }) => {
 						>
 							Remove Cropper
 						</button>
-						<button
-							onClick={downloadJSON}
-							className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded"
-						>
+						<button className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded">
 							Generate Preview
 						</button>
 					</div>
@@ -476,11 +350,6 @@ const VideoFlipEditor = ({ videoSource }) => {
 			</div>
 		</div>
 	);
-};
-
-// Add prop types validation
-VideoFlipEditor.defaultProps = {
-	videoSource: '/sample-video.mp4'
 };
 
 export default VideoFlipEditor;

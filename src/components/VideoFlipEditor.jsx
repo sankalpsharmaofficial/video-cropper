@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Volume2, VolumeX, Play, Pause } from 'lucide-react';
 
-const VideoFlipEditor = () => {
+const VideoFlipEditor = ({ videoSource }) => {
 	// State management
 	const [playing, setPlaying] = useState(false);
 	const [volume, setVolume] = useState(1);
@@ -15,12 +15,24 @@ const VideoFlipEditor = () => {
 	const [isDragging, setIsDragging] = useState(false);
 	const [recordings, setRecordings] = useState([]);
 	const [cropperActive, setCropperActive] = useState(false);
+	const [videoError, setVideoError] = useState(false);
+	const [videoLoading, setVideoLoading] = useState(true);
 
 	// Refs
 	const videoRef = useRef(null);
 	const previewRef = useRef(null);
 	const cropperRef = useRef(null);
 	const containerRef = useRef(null);
+
+	useEffect(() => {
+		if (!videoSource) {
+			setVideoError(true);
+			return;
+		}
+
+		setVideoError(false);
+		setVideoLoading(true);
+	}, [videoSource]);
 
 	// Format time function
 	const formatTime = (timeInSeconds) => {
@@ -42,6 +54,15 @@ const VideoFlipEditor = () => {
 			};
 		}
 	}, []);
+
+	const handleVideoLoad = () => {
+		setVideoLoading(false);
+	};
+
+	const handleVideoError = () => {
+		setVideoError(true);
+		setVideoLoading(false);
+	};
 
 	const initializeCropper = () => {
 		const video = videoRef.current;
@@ -224,6 +245,18 @@ const VideoFlipEditor = () => {
 		URL.revokeObjectURL(url);
 	};
 
+	if (videoError) {
+		return (
+			<div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center">
+				<div className="bg-gray-800 rounded-lg p-6 text-center">
+					<p className="text-red-500">
+						Error loading video. Please check the video source.
+					</p>
+				</div>
+			</div>
+		);
+	}
+
 	return (
 		<div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center">
 			<div className="bg-gray-800 rounded-lg w-full max-w-6xl p-6">
@@ -248,12 +281,21 @@ const VideoFlipEditor = () => {
 							className="relative bg-black rounded-lg overflow-hidden"
 							style={{ aspectRatio: '16/9' }}
 						>
+							{videoLoading && (
+								<div className="absolute inset-0 flex items-center justify-center">
+									<div className="text-white">Loading video...</div>
+								</div>
+							)}
 							<video
 								ref={videoRef}
 								className="w-full h-full object-contain"
 								onTimeUpdate={handleTimeUpdate}
+								onLoadedData={handleVideoLoad}
+								onError={handleVideoError}
 							>
-								<source src="/sample-video.mp4" type="video/mp4" />
+								<source src={videoSource} type="video/mp4" />
+								<source src={videoSource} type="video/webm" />
+								Your browser does not support the video tag.
 							</video>
 
 							{cropperActive && (
@@ -266,6 +308,7 @@ const VideoFlipEditor = () => {
 										width: `${cropperSize.width}px`,
 										height: `${cropperSize.height}px`
 									}}
+									onMouseDown={handleMouseDown}
 								>
 									{/* Grid overlay */}
 									<div className="absolute inset-0 grid grid-cols-3 grid-rows-3">
@@ -363,8 +406,11 @@ const VideoFlipEditor = () => {
 									ref={previewRef}
 									className="w-full object-cover rounded"
 									style={{ aspectRatio }}
+									onError={handleVideoError}
 								>
-									<source src="/sample-video.mp4" type="video/mp4" />
+									<source src={videoSource} type="video/mp4" />
+									<source src={videoSource} type="video/webm" />
+									Your browser does not support the video tag.
 								</video>
 							) : (
 								<div className="text-center">
@@ -430,6 +476,11 @@ const VideoFlipEditor = () => {
 			</div>
 		</div>
 	);
+};
+
+// Add prop types validation
+VideoFlipEditor.defaultProps = {
+	videoSource: '/sample-video.mp4'
 };
 
 export default VideoFlipEditor;
